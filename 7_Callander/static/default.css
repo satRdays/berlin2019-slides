@@ -1,0 +1,78 @@
+.reveal .titleslide {
+  color: #00A39E;
+}
+
+.reveal .title-slide h1 {
+  border: 5px solid black;
+}
+
+.reveal .slide-background {
+  background-repeat: round repeat;
+  background-position: top;
+  background-size: auto;
+}
+
+.reveal .slide-background .coverall {
+  background-repeat: round round;
+  background-size: cover;
+  background-position: center center;
+}
+
+.reveal, .reveal .author, .reveal .date {
+  background-color: white;
+  color: black;
+}
+
+.reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal .title {
+  background-color: white;
+  color: #00A39E;
+  border-radius: 25px;
+}
+
+.reveal a:link, .reveal a:visited {
+  color: #3C93E9
+}
+
+.reveal a:hover, .reveal a:active {
+  color: black
+}
+
+.reveal .slide img {
+  border: 0;
+  height: 400px;
+}
+
+.reveal .slide strong {
+  color: #ed4747;
+}
+
+.reveal .slide blockquote {
+  background: #87ceeb;
+  color: white;
+  border-radius: 25px;
+}
+
+.reveal .slide div.sourceCode, pre.sourceCode  {
+  padding: 0.5em;
+}
+
+.reveal .slide div.sourceCode {
+    background: linear-gradient(90deg, transparent, white, transparent);
+    padding-top: 0.5em;
+    padding-bottom: 0.1em;
+    padding-left: 50em;
+    padding-right: 50em;
+    margin-left: -50em;
+    margin-right: -50em;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
+
+.reveal .date {
+  color: #87ceeb;
+}
+
+.reveal .controls .navigate-left {
+  border-right-color: black;
+}

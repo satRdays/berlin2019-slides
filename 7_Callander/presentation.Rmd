@@ -1,0 +1,495 @@
+---
+title: "Recovering from Selection Bias with Hierarchical Bayes"
+author: |
+  | Brian Callander
+  | `r icon::fa('rss')` BrianCallander.com `r icon::fa('twitter')` @mcbricall
+date: "SatRday 15th June 2019"
+output: 
+  revealjs::revealjs_presentation:
+    css: static/default.css
+    self_contained: false
+    center: true
+    theme: solarized
+    highlight: pygments
+    reveal_plugins: ["notes"]
+    reveal_options:
+      slideNumber: false
+      previewLinks: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  dev = "svglite"
+  , echo = TRUE
+  , comment = NA
+  , cache = FALSE
+  , message = FALSE
+  , warning = TRUE
+  , error = TRUE
+)
+
+library(tidyverse)
+library(scales)
+library(kableExtra)
+
+library(here)
+library(furrr)
+
+library(brms)
+library(tidybayes)
+
+theme_set(theme_bw())
+
+plan(multiprocess) # execution plan for furrr
+```
+
+
+# Collecting data {data-background=static/quota_sampling.jpg class="coverall"}
+
+```{r weights, include=FALSE}
+weights <- "data/weights.rds" %>% 
+  here() %>% 
+  read_rds() %>% 
+  group_by(age) %>% 
+  mutate(weight = weight / sum(weight))
+```
+
+
+```{r data, include=FALSE}
+df <- "data/surveys.rds" %>% 
+  here() %>% 
+  read_rds() 
+```
+
+<aside class="notes">
+* MISSION: Connect the world of science, make research open to all
+* What do researchers want/need? ASK THEM!
+</aside>
+
+
+## Highly engaged users love surveys
+
+```{r representation_engagement, echo=FALSE, fig.height=4, fig.width=6, out.width="100%", out.height="70%"}
+df %>% 
+  group_by(engagement) %>% 
+  tally() %>% 
+  transmute(engagement, fraction = n / sum(n), source = 'sample') %>% 
+  bind_rows(
+    weights %>% 
+      group_by(engagement) %>% 
+      summarise(fraction = sum(weight), source = 'population')
+  ) %>% 
+  ggplot() +
+  aes(source, fraction , colour = engagement) +
+  geom_point() +
+  geom_line(aes(group = engagement)) +
+  scale_y_continuous(labels = percent_format(1), limits = c(0, NA)) +
+  labs(
+    x = 'Data source',
+    y = 'Fraction',
+    colour = 'Engagement',
+    title = "Misrepresentation of Engagement"
+  )
+```
+
+<aside class="notes">
+* Data ROUGHLY BASED on survey data
+* only a problem if responses are different
+</aside>
+
+## Highly engaged users are different
+
+```{r outcome_vs_engagement, echo=FALSE, fig.height=4, fig.width=6, out.width="100%", out.height="70%"}
+df %>% 
+  group_by(engagement, outcome) %>% 
+  tally() %>% 
+  mutate(total = sum(n), frac = n / sum(n)) %>% 
+  filter(outcome) %>% 
+  ggplot() +
+  aes(engagement, frac) +
+  geom_col(aes(fill = engagement)) +
+  scale_y_continuous(labels = percent_format(1)) +
+  labs(
+    x = 'Engagement',
+    y = 'Mean outcome',
+    title = 'Outcome as a function of engagement'
+    # caption = meta
+  ) +
+  coord_flip() +
+  guides(fill = FALSE) +
+  theme(legend.position = 'bottom') +
+  NULL
+  
+```
+
+<aside class="notes">
+* a pattern seen with many variables
+</aside>
+
+## The problem
+
+> Responses on your platform are dominated by your most engaged users!
+
+* Online surveys
+* ML datasets
+
+<aside class="notes">
+* Always in surveys!
+* Can also be other features: COUNTRY
+* Sometimes we ask our users for ML labels
+</aside>
+
+## A solution
+
+> Collect data without selection bias!
+
+BEFORE launching the survey:
+
+* discuss the most relevant population demographics 
+* understand which users love to give feedback
+* write a query with the population breakdowns
+
+<aside class="notes">
+* THIS IS THE SLIDE TO REMEMBER!!!
+* 'Population' doesn't mean all your users!!
+</aside>
+
+## But...
+
+* somebody else collected the data!
+* it takes too long!
+* my survey infrastructure is awkward!
+* I want to compare two populations!
+* I want to explore different assumptions!
+
+# MRP {data-background=static/mugshot_gelman.jpg}
+
+## MRP steps
+
+1. **Multilevel Regression**: the response is modelled conditional on the demographic cells.
+
+2. **Poststratification**: average the above probabilities weighted by the cell-proportion in the general population.
+
+<aside class="notes">
+* EG: weight each binary gender by 50%
+</aside>
+
+## MRP steps
+
+1. **Multilevel Regression**: $$\mathbb P (Y \mid A, E, S = 1) \approx \mathbb P (Y \mid A, E)$$
+
+2. **Poststratification**: $$\mathbb P(Y \mid A) = \sum_e \mathbb P (Y \mid A, E = e) \mathbb P (E = e \mid A)$$
+
+
+$E = \{ \text{engagement, country} \}$
+
+$A = \{ \text{age} \}$
+
+
+<aside class="notes">
+* Cells are small enough so that there's no selection bias within.
+* Can estimate from data!
+* Hierarchical is able to include more factors/levels
+* But which factors should be included?
+* Is this even meaningful?
+</aside>
+
+# MR(Pearl) {data-background=static/mugshot_pearl.jpg}
+
+
+## Selection-backdoor adjustment
+
+![Causal DAG](static/mrp_causal_dag.svg){height=400px}
+
+<aside class="notes">
+* Do your own diagram!
+* @RG: explicit assumptions, easy communication with domain experts
+* Like confounding
+* Condition on nodes to make Y and S independent
+* Possible no adjustment exists!
+</aside>
+
+
+## MRP as causal inference
+
+$$
+  \mathbb P (Y \mid \text{do}(A = a))
+  \\
+  =
+  \sum_{e}
+  \mathbb P (Y \mid A = a, E = e, S = 1) 
+  ·
+  \mathbb P (E = e)
+$$
+
+<aside class="notes">
+* Just poststratificaion over E
+* Causal claim vs 'causally informed'?
+</aside>
+
+
+
+## MRP not necessarily a probability...
+
+$$
+  \mathbb P (Y \mid A = a)
+  \\
+  =
+  \sum_{e}
+  \mathbb P (Y \mid A = a, E = e, S = 1) 
+  ·
+  \mathbb P (E = e \mid A = a)
+$$
+
+<aside class="notes">
+* If A, E independent, get same as P(Y | do A)
+</aside>
+
+## Unconditional probability is MRP
+
+$$
+\begin{align}
+  &
+  \mathbb P (Y)
+  \\
+  &=
+  \sum_A 
+  \mathbb P(Y \mid A ) 
+  \cdot
+  \mathbb P (A )
+  \\
+  &=
+  \sum_{A, E}
+  \mathbb P (Y \mid A, E, S = 1) 
+  ·
+  \mathbb P (E \mid A)
+  ·
+  \mathbb P (A)
+  \\
+  &=
+  \sum_{A, E}
+  \mathbb P (Y \mid A, E, S = 1) 
+  ·
+  \mathbb P(A, E)
+\end{align}
+$$
+
+<aside class="notes">
+* Law of total probability
+* Selection adjustment for probability
+* Definition of conditional probability
+</aside>
+
+
+# Example {data-background=static/hex.jpg}
+
+
+## Multilevel regression
+
+```{r model}
+model <- brms::brm(
+  family = binomial(),
+  
+  formula = outcome | trials(n) ~ 1 + # grand mean
+    (1 | age) + 
+    (1 | engagement) + (1 | country), 
+  
+  prior = c( # priors on logit scale
+    prior(normal(-1, 3), class = "Intercept"),
+    prior(normal(0, 1), class = 'sd')
+  ),
+  
+  data = df %>%
+    group_by(continent, country, engagement, age) %>% 
+    summarise(outcome = sum(outcome), n = n()),
+  
+  # other
+  cores = 4,
+  chains = 4,
+  warmup = 1500,
+  iter = 3000,
+  control = list(adapt_delta = 0.995), # gets rid of divergences
+  seed = 34695, # https://www.random.org/integers/?num=1&min=1&max=100000&col=5&base=10&format=html&rnd=new
+  file = here('models/age_engagement_country') # cache the trained model 
+) 
+
+```
+
+<aside class="notes">
+* Explain grand mean, with multilevel effects as differences
+* Model the distribution of each factor so can predict new levels
+* Poststratify country/engagement effects
+* Treat survey effect as 'random fluctuations'
+</aside>
+
+
+## Poststratification
+
+```{r poststratify}
+poststratify <- function(cells, model, given, ...) {
+  cells %>% 
+    mutate(n = 10000) %>% # binomial model needs number of trials, n
+    tidybayes::add_predicted_draws( # make predictions
+      model, 
+      allow_new_levels = TRUE, # some cells not observed!
+      prediction = 'k', # number of successful trials
+      ...
+    ) %>% 
+    group_by(!!!syms(given), .draw) %>% 
+    summarise(probability = sum(weight * k / n))
+}
+```
+
+<aside class="notes">
+* Fix given levels and poststratify away the rest
+</aside>
+
+## Poststratification
+
+```{r poststratification, cache=TRUE}
+draws <- weights %>% 
+  # poststratify each case separately to avoid blowing up RAM
+  group_split(age) %>% 
+  furrr::future_map_dfr( # like map_dfr but in parallel
+    poststratify, 
+    model, 
+    c('age'), 
+    n = 1000 # number of posterior draws
+  ) 
+```
+
+<aside class="notes">
+* Creating all the data then reducing is inefficient - do it for each fixed level in turn
+</aside>
+
+## Raw vs adjusted estimates
+
+```{r comparison, echo=FALSE, warning=FALSE, fig.height=4, fig.width=6, out.width="100%", out.height="70%"}
+raw <- df %>% 
+  group_by(age) %>% 
+  summarise(estimate = mean(outcome), n = n())
+
+cis <- draws %>% 
+  summarise(
+    lower = quantile(probability, 0.25),
+    estimate = quantile(probability, 0.5),
+    upper = quantile(probability, 0.75)
+  ) 
+
+cis %>%
+  mutate(type = 'adjusted') %>% 
+  bind_rows(raw %>% mutate(type = 'raw')) %>% 
+  mutate(type = ordered(type, c('raw', 'adjusted'))) %>% 
+  ggplot() + 
+  aes(x = type, y = estimate, colour = age, group = age) + 
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(labels = percent_format(1), breaks = seq(0, 1, 0.02)) +
+  labs(
+    x = 'Estimation method',
+    y = 'Outcome',
+    colour = 'Age',
+    title = 'Comparison of raw and adjusted estimates'
+  ) +
+  # theme(legend.age = 'bottom') +
+  NULL
+
+```
+
+<aside class="notes">
+* Everything going down is due to adjusting for engagement
+</aside>
+
+# Questions? {data-background=static/questions.png class="coverall"}
+
+# References
+
+## Theory 
+
+* [Bareinboim, Tian, Pearl: Recovering from Selection Bias](https://www.aaai.org/ocs/index.php/AAAI/AAAI14/paper/viewFile/8628/8707)
+* [Gelman: MRP](http://www.stat.columbia.edu/~gelman/research/published/poststrat3.pdf)
+* [WRGG: Forecasting elections with non-representative polls](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/04/forecasting-with-nonrepresentative-polls.pdf)
+
+## Tutorials
+
+* [Mastny: MRP in brms](https://timmastny.rbind.io/blog/multilevel-mrp-tidybayes-brms-stan/)
+* [Kastellec: MRP in lme4](https://www.princeton.edu/~jkastell/mrp_primer.html)
+* [Rochford: MRP in pymc3](https://austinrochford.com/posts/2017-07-09-mrpymc3.html)
+
+## Packages
+
+* [brms](http://cran.rapporter.net/web/packages/brms/index.html)
+* [tidybayes](https://cran.r-project.org/web/packages/tidybayes/index.html)
+* [tidyverse](https://cran.r-project.org/web/packages/tidyverse/index.html)
+* [loo](https://mc-stan.org/users/interfaces/loo)
+
+## Other
+
+* [Betancourting Disaster: Generalizables and Majors](https://www.patreon.com/posts/betancourting-4-26159838)
+* [Pearl, Glymour, Jewell: Causal inference in statistics: a primer](http://bayes.cs.ucla.edu/PRIMER/)
+* [Gelman: Opinions on the Book of Why](https://statmodeling.stat.columbia.edu/2019/01/08/book-pearl-mackenzie/)
+
+# Selection-backdoor criterion
+
+## Definition
+
+Let $G$ be a graph where nodes in $T$ are measured in both sample and population, and nodes in $M$ only in the sample. Then nodes $Z$ are said to satisfy the **s-backdoor criterion** relative to $(X, Y)$ if
+
+1. $X$ and $Z$ block all paths between $S$ and $Y$; and
+2. $Z_D$ blocks all backdoor paths from $X$ to $Y$;
+3. $X$ and $Z_D$ block all paths between $Z_O$ and $Y$; 
+4. $Z \cup \{X,Y\} \subset M$ and $Z \subset T$;
+
+where $Z_D := Z \cap \text{Desc}(X)$ and $Z_O := Z - Z_D$.
+
+<aside class="notes">
+* 1 is the important one for selection bias
+* 2 is the backdoor criterion
+* 3 makes 3 and 1 compatible
+* 4 are necessary for poststratification
+</aside>
+
+# Model details
+
+
+## Estimates
+
+```{r model_estimates, echo=FALSE, warning=FALSE, fig.height = 4, fig.width = 6, out.width="100%", out.height="70%"}
+cis %>%
+  inner_join(raw, by = 'age', suffix = c('_adjusted', '_raw')) %>% 
+  # filter(age != 'Unknown', age != "I'm not a researcher") %>% 
+  ggplot() + 
+  aes(age, ymin = lower, y = estimate_adjusted, ymax = upper) + 
+  geom_pointrange(aes(colour = age), position = position_dodge(width = 1)) + 
+  geom_point(aes(y = estimate_raw), size = 2, colour = 'black', fill = 'white', shape = 21, stroke = 1) +
+  scale_y_continuous(labels = percent_format(1), breaks = seq(0, 1, 0.05)) +
+  coord_flip() +
+  labs(
+    y = "Estimated outcome",
+    x = "Age",
+    title = 'Raw and adjusted estimates',
+    subtitle = 'Hollow dots indicate the raw fraction'
+  ) +
+  guides(colour = FALSE) +
+  NULL
+```
+
+## Diagnostics
+
+```{r hmc_diagnostics, message=TRUE, warning=TRUE}
+model$fit %>% rstan::check_hmc_diagnostics()
+```
+
+
+## Trace 
+
+```{r model_trace}
+model %>% 
+  plot(., head(get_variables(.), 4))
+```
+
+## Summary
+
+```{r model_summary}
+model %>% summary()
+```

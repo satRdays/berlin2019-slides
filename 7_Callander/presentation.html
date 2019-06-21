@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="pandoc">
+  <title>Recovering from Selection Bias with Hierarchical Bayes</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+  <link rel="stylesheet" href="presentation_files/reveal.js-3.3.0.1/css/reveal.css"/>
+
+
+<style type="text/css">
+a.sourceLine { display: inline-block; line-height: 1.25; }
+a.sourceLine { pointer-events: none; color: inherit; text-decoration: inherit; }
+a.sourceLine:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode { white-space: pre; position: relative; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+code.sourceCode { white-space: pre-wrap; }
+a.sourceLine { text-indent: -1em; padding-left: 1em; }
+}
+pre.numberSource a.sourceLine
+  { position: relative; left: -4em; }
+pre.numberSource a.sourceLine::before
+  { content: attr(data-line-number);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; pointer-events: all; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {  }
+@media screen {
+a.sourceLine::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+<link rel="stylesheet" href="presentation_files/reveal.js-3.3.0.1/css/theme/solarized.css" id="theme">
+
+
+  <!-- some tweaks to reveal css -->
+  <style type="text/css">
+    .reveal h1 { font-size: 2.0em; }
+    .reveal h2 { font-size: 1.5em;  }
+    .reveal h3 { font-size: 1.25em;	}
+    .reveal h4 { font-size: 1em;	}
+
+    .reveal .slides>section,
+    .reveal .slides>section>section {
+      padding: 0px 0px;
+    }
+
+
+
+    .reveal table {
+      border-width: 1px;
+      border-spacing: 2px;
+      border-style: dotted;
+      border-color: gray;
+      border-collapse: collapse;
+      font-size: 0.7em;
+    }
+
+    .reveal table th {
+      border-width: 1px;
+      padding-left: 10px;
+      padding-right: 25px;
+      font-weight: bold;
+      border-style: dotted;
+      border-color: gray;
+    }
+
+    .reveal table td {
+      border-width: 1px;
+      padding-left: 10px;
+      padding-right: 25px;
+      border-style: dotted;
+      border-color: gray;
+    }
+
+
+  </style>
+
+    <style type="text/css">code{white-space: pre;}</style>
+
+    <link rel="stylesheet" href="static/default.css"/>
+
+<!-- Printing and PDF exports -->
+<script id="paper-css" type="application/dynamic-css">
+
+/* Default Print Stylesheet Template
+   by Rob Glazebrook of CSSnewbie.com
+   Last Updated: June 4, 2008
+
+   Feel free (nay, compelled) to edit, append, and
+   manipulate this file as you see fit. */
+
+
+@media print {
+
+	/* SECTION 1: Set default width, margin, float, and
+	   background. This prevents elements from extending
+	   beyond the edge of the printed page, and prevents
+	   unnecessary background images from printing */
+	html {
+		background: #fff;
+		width: auto;
+		height: auto;
+		overflow: visible;
+	}
+	body {
+		background: #fff;
+		font-size: 20pt;
+		width: auto;
+		height: auto;
+		border: 0;
+		margin: 0 5%;
+		padding: 0;
+		overflow: visible;
+		float: none !important;
+	}
+
+	/* SECTION 2: Remove any elements not needed in print.
+	   This would include navigation, ads, sidebars, etc. */
+	.nestedarrow,
+	.controls,
+	.fork-reveal,
+	.share-reveal,
+	.state-background,
+	.reveal .progress,
+	.reveal .backgrounds {
+		display: none !important;
+	}
+
+	/* SECTION 3: Set body font face, size, and color.
+	   Consider using a serif font for readability. */
+	body, p, td, li, div {
+		font-size: 20pt!important;
+		font-family: Georgia, "Times New Roman", Times, serif !important;
+		color: #000;
+	}
+
+	/* SECTION 4: Set heading font face, sizes, and color.
+	   Differentiate your headings from your body text.
+	   Perhaps use a large sans-serif for distinction. */
+	h1,h2,h3,h4,h5,h6 {
+		color: #000!important;
+		height: auto;
+		line-height: normal;
+		font-family: Georgia, "Times New Roman", Times, serif !important;
+		text-shadow: 0 0 0 #000 !important;
+		text-align: left;
+		letter-spacing: normal;
+	}
+	/* Need to reduce the size of the fonts for printing */
+	h1 { font-size: 28pt !important;  }
+	h2 { font-size: 24pt !important; }
+	h3 { font-size: 22pt !important; }
+	h4 { font-size: 22pt !important; font-variant: small-caps; }
+	h5 { font-size: 21pt !important; }
+	h6 { font-size: 20pt !important; font-style: italic; }
+
+	/* SECTION 5: Make hyperlinks more usable.
+	   Ensure links are underlined, and consider appending
+	   the URL to the end of the link for usability. */
+	a:link,
+	a:visited {
+		color: #000 !important;
+		font-weight: bold;
+		text-decoration: underline;
+	}
+	/*
+	.reveal a:link:after,
+	.reveal a:visited:after {
+		content: " (" attr(href) ") ";
+		color: #222 !important;
+		font-size: 90%;
+	}
+	*/
+
+
+	/* SECTION 6: more reveal.js specific additions by @skypanther */
+	ul, ol, div, p {
+		visibility: visible;
+		position: static;
+		width: auto;
+		height: auto;
+		display: block;
+		overflow: visible;
+		margin: 0;
+		text-align: left !important;
+	}
+	.reveal pre,
+	.reveal table {
+		margin-left: 0;
+		margin-right: 0;
+	}
+	.reveal pre code {
+		padding: 20px;
+		border: 1px solid #ddd;
+	}
+	.reveal blockquote {
+		margin: 20px 0;
+	}
+	.reveal .slides {
+		position: static !important;
+		width: auto !important;
+		height: auto !important;
+
+		left: 0 !important;
+		top: 0 !important;
+		margin-left: 0 !important;
+		margin-top: 0 !important;
+		padding: 0 !important;
+		zoom: 1 !important;
+
+		overflow: visible !important;
+		display: block !important;
+
+		text-align: left !important;
+		-webkit-perspective: none;
+		   -moz-perspective: none;
+		    -ms-perspective: none;
+		        perspective: none;
+
+		-webkit-perspective-origin: 50% 50%;
+		   -moz-perspective-origin: 50% 50%;
+		    -ms-perspective-origin: 50% 50%;
+		        perspective-origin: 50% 50%;
+	}
+	.reveal .slides section {
+		visibility: visible !important;
+		position: static !important;
+		width: auto !important;
+		height: auto !important;
+		display: block !important;
+		overflow: visible !important;
+
+		left: 0 !important;
+		top: 0 !important;
+		margin-left: 0 !important;
+		margin-top: 0 !important;
+		padding: 60px 20px !important;
+		z-index: auto !important;
+
+		opacity: 1 !important;
+
+		page-break-after: always !important;
+
+		-webkit-transform-style: flat !important;
+		   -moz-transform-style: flat !important;
+		    -ms-transform-style: flat !important;
+		        transform-style: flat !important;
+
+		-webkit-transform: none !important;
+		   -moz-transform: none !important;
+		    -ms-transform: none !important;
+		        transform: none !important;
+
+		-webkit-transition: none !important;
+		   -moz-transition: none !important;
+		    -ms-transition: none !important;
+		        transition: none !important;
+	}
+	.reveal .slides section.stack {
+		padding: 0 !important;
+	}
+	.reveal section:last-of-type {
+		page-break-after: avoid !important;
+	}
+	.reveal section .fragment {
+		opacity: 1 !important;
+		visibility: visible !important;
+
+		-webkit-transform: none !important;
+		   -moz-transform: none !important;
+		    -ms-transform: none !important;
+		        transform: none !important;
+	}
+	.reveal section img {
+		display: block;
+		margin: 15px 0px;
+		background: rgba(255,255,255,1);
+		border: 1px solid #666;
+		box-shadow: none;
+	}
+
+	.reveal section small {
+		font-size: 0.8em;
+	}
+
+}  
+</script>
+
+
+<script id="pdf-css" type="application/dynamic-css">
+    
+/**
+ * This stylesheet is used to print reveal.js
+ * presentations to PDF.
+ *
+ * https://github.com/hakimel/reveal.js#pdf-export
+ */
+
+* {
+	-webkit-print-color-adjust: exact;
+}
+
+body {
+	margin: 0 auto !important;
+	border: 0;
+	padding: 0;
+	float: none !important;
+	overflow: visible;
+}
+
+html {
+	width: 100%;
+	height: 100%;
+	overflow: visible;
+}
+
+/* Remove any elements not needed in print. */
+.nestedarrow,
+.reveal .controls,
+.reveal .progress,
+.reveal .playback,
+.reveal.overview,
+.fork-reveal,
+.share-reveal,
+.state-background {
+	display: none !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	text-shadow: 0 0 0 #000 !important;
+}
+
+.reveal pre code {
+	overflow: hidden !important;
+	font-family: Courier, 'Courier New', monospace !important;
+}
+
+ul, ol, div, p {
+	visibility: visible;
+	position: static;
+	width: auto;
+	height: auto;
+	display: block;
+	overflow: visible;
+	margin: auto;
+}
+.reveal {
+	width: auto !important;
+	height: auto !important;
+	overflow: hidden !important;
+}
+.reveal .slides {
+	position: static;
+	width: 100%;
+	height: auto;
+
+	left: auto;
+	top: auto;
+	margin: 0 !important;
+	padding: 0 !important;
+
+	overflow: visible;
+	display: block;
+
+	-webkit-perspective: none;
+	   -moz-perspective: none;
+	    -ms-perspective: none;
+	        perspective: none;
+
+	-webkit-perspective-origin: 50% 50%; /* there isn't a none/auto value but 50-50 is the default */
+	   -moz-perspective-origin: 50% 50%;
+	    -ms-perspective-origin: 50% 50%;
+	        perspective-origin: 50% 50%;
+}
+
+.reveal .slides section {
+	page-break-after: always !important;
+
+	visibility: visible !important;
+	position: relative !important;
+	display: block !important;
+	position: relative !important;
+
+	margin: 0 !important;
+	padding: 0 !important;
+	box-sizing: border-box !important;
+	min-height: 1px;
+
+	opacity: 1 !important;
+
+	-webkit-transform-style: flat !important;
+	   -moz-transform-style: flat !important;
+	    -ms-transform-style: flat !important;
+	        transform-style: flat !important;
+
+	-webkit-transform: none !important;
+	   -moz-transform: none !important;
+	    -ms-transform: none !important;
+	        transform: none !important;
+}
+
+.reveal section.stack {
+	margin: 0 !important;
+	padding: 0 !important;
+	page-break-after: avoid !important;
+	height: auto !important;
+	min-height: auto !important;
+}
+
+.reveal img {
+	box-shadow: none;
+}
+
+.reveal .roll {
+	overflow: visible;
+	line-height: 1em;
+}
+
+/* Slide backgrounds are placed inside of their slide when exporting to PDF */
+.reveal section .slide-background {
+	display: block !important;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	z-index: -1;
+}
+
+/* All elements should be above the slide-background */
+.reveal section>* {
+	position: relative;
+	z-index: 1;
+}
+
+/* Display slide speaker notes when 'showNotes' is enabled */
+.reveal .speaker-notes-pdf {
+	display: block;
+	width: 100%;
+	max-height: none;
+	left: auto;
+	top: auto;
+	z-index: 100;
+}
+
+/* Display slide numbers when 'slideNumber' is enabled */
+.reveal .slide-number-pdf {
+	display: block;
+	position: absolute;
+	font-size: 14px;
+}
+
+</script>
+
+
+<script>
+var style = document.createElement( 'style' );
+style.type = 'text/css';
+var style_script_id = window.location.search.match( /print-pdf/gi ) ? 'pdf-css' : 'paper-css';
+var style_script = document.getElementById(style_script_id).text;
+style.innerHTML = style_script;
+document.getElementsByTagName('head')[0].appendChild(style);
+</script>
+
+    <link href="presentation_files/font-awesome-5.3.1/css/fontawesome-all.min.css" rel="stylesheet" />
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+<section>
+    <h1 class="title">Recovering from Selection Bias with Hierarchical Bayes</h1>
+    <h2 class="author"><div class="line-block">Brian Callander<br />
+<i class="fas  fa-rss "></i> BrianCallander.com <i class="fab  fa-twitter "></i> <span class="citation" data-cites="mcbricall">@mcbricall</span></div></h2>
+    <h3 class="date">SatRday 15th June 2019</h3>
+</section>
+
+<section><section id="collecting-data" class="title-slide slide level1 coverall" data-background="static/quota_sampling.jpg"><h1>Collecting data</h1></section><section id="highly-engaged-users-love-surveys" class="slide level2">
+<h2>Highly engaged users love surveys</h2>
+<p><img src="presentation_files/figure-revealjs/representation_engagement-1.svg" width="100%" height="70%" /></p>
+<aside class="notes">
+<ul>
+<li>Data ROUGHLY BASED on survey data</li>
+<li>only a problem if responses are different</li>
+</ul>
+</aside>
+</section><section id="highly-engaged-users-are-different" class="slide level2">
+<h2>Highly engaged users are different</h2>
+<p><img src="presentation_files/figure-revealjs/outcome_vs_engagement-1.svg" width="100%" height="70%" /></p>
+<aside class="notes">
+<ul>
+<li>a pattern seen with many variables</li>
+</ul>
+</aside>
+</section><section id="the-problem" class="slide level2">
+<h2>The problem</h2>
+<blockquote>
+<p>Responses on your platform are dominated by your most engaged users!</p>
+</blockquote>
+<ul>
+<li>Online surveys</li>
+<li>ML datasets</li>
+</ul>
+<aside class="notes">
+<ul>
+<li>Always in surveys!</li>
+<li>Can also be other features: COUNTRY</li>
+<li>Sometimes we ask our users for ML labels</li>
+</ul>
+</aside>
+</section><section id="a-solution" class="slide level2">
+<h2>A solution</h2>
+<blockquote>
+<p>Collect data without selection bias!</p>
+</blockquote>
+<p>BEFORE launching the survey:</p>
+<ul>
+<li>discuss the most relevant population demographics</li>
+<li>understand which users love to give feedback</li>
+<li>write a query with the population breakdowns</li>
+</ul>
+<aside class="notes">
+<ul>
+<li>THIS IS THE SLIDE TO REMEMBER!!!</li>
+<li>‘Population’ doesn’t mean all your users!!</li>
+</ul>
+</aside>
+</section><section id="but" class="slide level2">
+<h2>But…</h2>
+<ul>
+<li>somebody else collected the data!</li>
+<li>it takes too long!</li>
+<li>my survey infrastructure is awkward!</li>
+<li>I want to compare two populations!</li>
+<li>I want to explore different assumptions!</li>
+</ul>
+</section></section>
+<section><section id="mrp" class="title-slide slide level1" data-background="static/mugshot_gelman.jpg"><h1>MRP</h1></section><section id="mrp-steps" class="slide level2">
+<h2>MRP steps</h2>
+<ol type="1">
+<li><p><strong>Multilevel Regression</strong>: the response is modelled conditional on the demographic cells.</p></li>
+<li><p><strong>Poststratification</strong>: average the above probabilities weighted by the cell-proportion in the general population.</p></li>
+</ol>
+<aside class="notes">
+<ul>
+<li>EG: weight each binary gender by 50%</li>
+</ul>
+</aside>
+</section><section id="mrp-steps-1" class="slide level2">
+<h2>MRP steps</h2>
+<ol type="1">
+<li><p><strong>Multilevel Regression</strong>: <span class="math display">\[\mathbb P (Y \mid A, E, S = 1) \approx \mathbb P (Y \mid A, E)\]</span></p></li>
+<li><p><strong>Poststratification</strong>: <span class="math display">\[\mathbb P(Y \mid A) = \sum_e \mathbb P (Y \mid A, E = e) \mathbb P (E = e \mid A)\]</span></p></li>
+</ol>
+<p><span class="math inline">\(E = \{ \text{engagement, country} \}\)</span></p>
+<p><span class="math inline">\(A = \{ \text{age} \}\)</span></p>
+<aside class="notes">
+<ul>
+<li>Cells are small enough so that there’s no selection bias within.</li>
+<li>Can estimate from data!</li>
+<li>Hierarchical is able to include more factors/levels</li>
+<li>But which factors should be included?</li>
+<li>Is this even meaningful?</li>
+</ul>
+</aside>
+</section></section>
+<section><section id="mrpearl" class="title-slide slide level1" data-background="static/mugshot_pearl.jpg"><h1>MR(Pearl)</h1></section><section id="selection-backdoor-adjustment" class="slide level2">
+<h2>Selection-backdoor adjustment</h2>
+<p><img data-src="static/mrp_causal_dag.svg" alt="Causal DAG" height="400" /></p>
+<aside class="notes">
+<ul>
+<li>Do your own diagram!</li>
+<li><span class="citation" data-cites="RG">@RG</span>: explicit assumptions, easy communication with domain experts</li>
+<li>Like confounding</li>
+<li>Condition on nodes to make Y and S independent</li>
+<li>Possible no adjustment exists!</li>
+</ul>
+</aside>
+</section><section id="causal-estimate" class="slide level2">
+<h2>Causal estimate</h2>
+<p><span class="math display">\[
+  \mathbb P (Y \mid \text{do}(A = a))
+  \\
+  =
+  \sum_{e}
+  \mathbb P (Y \mid A = a, E = e, S = 1) 
+  ·
+  \mathbb P (E = e)
+\]</span></p>
+</section><section id="mrp-as-a-probability" class="slide level2">
+<h2>MRP as a probability</h2>
+<p><span class="math display">\[
+  \mathbb P (Y \mid A = a)
+  \\
+  =
+  \sum_{e}
+  \mathbb P (Y \mid A = a, E = e, S = 1) 
+  ·
+  \mathbb P (E = e \mid A = a)
+\]</span></p>
+<aside class="notes">
+<ul>
+<li>If A, E independent, get same as P(Y | do A)</li>
+</ul>
+</aside>
+</section><section id="unconditional-probability-is-mrp" class="slide level2">
+<h2>Unconditional probability is MRP</h2>
+<p><span class="math display">\[
+\begin{align}
+  &amp;
+  \mathbb P (Y)
+  \\
+  &amp;=
+  \sum_A 
+  \mathbb P(Y \mid A ) 
+  \cdot
+  \mathbb P (A )
+  \\
+  &amp;=
+  \sum_{A, E}
+  \mathbb P (Y \mid A, E, S = 1) 
+  ·
+  \mathbb P (E \mid A)
+  ·
+  \mathbb P (A)
+  \\
+  &amp;=
+  \sum_{A, E}
+  \mathbb P (Y \mid A, E, S = 1) 
+  ·
+  \mathbb P(A, E)
+\end{align}
+\]</span></p>
+<aside class="notes">
+<ul>
+<li>Law of total probability</li>
+<li>Selection adjustment for probability</li>
+<li>Definition of conditional probability</li>
+</ul>
+</aside>
+</section></section>
+<section><section id="example" class="title-slide slide level1" data-background="static/hex.jpg"><h1>Example</h1></section><section id="multilevel-regression" class="slide level2">
+<h2>Multilevel regression</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb1-1" data-line-number="1">model &lt;-<span class="st"> </span>brms<span class="op">::</span><span class="kw">brm</span>(</a>
+<a class="sourceLine" id="cb1-2" data-line-number="2">  <span class="dt">family =</span> <span class="kw">binomial</span>(),</a>
+<a class="sourceLine" id="cb1-3" data-line-number="3">  </a>
+<a class="sourceLine" id="cb1-4" data-line-number="4">  <span class="dt">formula =</span> outcome <span class="op">|</span><span class="st"> </span><span class="kw">trials</span>(n) <span class="op">~</span><span class="st"> </span><span class="dv">1</span> <span class="op">+</span><span class="st"> </span><span class="co"># grand mean</span></a>
+<a class="sourceLine" id="cb1-5" data-line-number="5"><span class="st">    </span>(<span class="dv">1</span> <span class="op">|</span><span class="st"> </span>age) <span class="op">+</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb1-6" data-line-number="6"><span class="st">    </span>(<span class="dv">1</span> <span class="op">|</span><span class="st"> </span>engagement) <span class="op">+</span><span class="st"> </span>(<span class="dv">1</span> <span class="op">|</span><span class="st"> </span>country), </a>
+<a class="sourceLine" id="cb1-7" data-line-number="7">  </a>
+<a class="sourceLine" id="cb1-8" data-line-number="8">  <span class="dt">prior =</span> <span class="kw">c</span>( <span class="co"># priors on logit scale</span></a>
+<a class="sourceLine" id="cb1-9" data-line-number="9">    <span class="kw">prior</span>(<span class="kw">normal</span>(<span class="op">-</span><span class="dv">1</span>, <span class="dv">3</span>), <span class="dt">class =</span> <span class="st">&quot;Intercept&quot;</span>),</a>
+<a class="sourceLine" id="cb1-10" data-line-number="10">    <span class="kw">prior</span>(<span class="kw">normal</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="dt">class =</span> <span class="st">&#39;sd&#39;</span>)</a>
+<a class="sourceLine" id="cb1-11" data-line-number="11">  ),</a>
+<a class="sourceLine" id="cb1-12" data-line-number="12">  </a>
+<a class="sourceLine" id="cb1-13" data-line-number="13">  <span class="dt">data =</span> df <span class="op">%&gt;%</span></a>
+<a class="sourceLine" id="cb1-14" data-line-number="14"><span class="st">    </span><span class="kw">group_by</span>(continent, country, engagement, age) <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb1-15" data-line-number="15"><span class="st">    </span><span class="kw">summarise</span>(<span class="dt">outcome =</span> <span class="kw">sum</span>(outcome), <span class="dt">n =</span> <span class="kw">n</span>()),</a>
+<a class="sourceLine" id="cb1-16" data-line-number="16">  </a>
+<a class="sourceLine" id="cb1-17" data-line-number="17">  <span class="co"># other</span></a>
+<a class="sourceLine" id="cb1-18" data-line-number="18">  <span class="dt">cores =</span> <span class="dv">4</span>,</a>
+<a class="sourceLine" id="cb1-19" data-line-number="19">  <span class="dt">chains =</span> <span class="dv">4</span>,</a>
+<a class="sourceLine" id="cb1-20" data-line-number="20">  <span class="dt">warmup =</span> <span class="dv">1500</span>,</a>
+<a class="sourceLine" id="cb1-21" data-line-number="21">  <span class="dt">iter =</span> <span class="dv">3000</span>,</a>
+<a class="sourceLine" id="cb1-22" data-line-number="22">  <span class="dt">control =</span> <span class="kw">list</span>(<span class="dt">adapt_delta =</span> <span class="fl">0.995</span>), <span class="co"># gets rid of divergences</span></a>
+<a class="sourceLine" id="cb1-23" data-line-number="23">  <span class="dt">seed =</span> <span class="dv">34695</span>, <span class="co"># https://www.random.org/integers/?num=1&amp;min=1&amp;max=100000&amp;col=5&amp;base=10&amp;format=html&amp;rnd=new</span></a>
+<a class="sourceLine" id="cb1-24" data-line-number="24">  <span class="dt">file =</span> <span class="kw">here</span>(<span class="st">&#39;models/age_engagement_country&#39;</span>) <span class="co"># cache the trained model </span></a>
+<a class="sourceLine" id="cb1-25" data-line-number="25">) </a></code></pre></div>
+<aside class="notes">
+<ul>
+<li>Explain grand mean, with multilevel effects as differences</li>
+<li>Model the distribution of each factor so can predict new levels</li>
+<li>Poststratify country/engagement effects</li>
+<li>Treat survey effect as ‘random fluctuations’</li>
+</ul>
+</aside>
+</section><section id="poststratification" class="slide level2">
+<h2>Poststratification</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb2-1" data-line-number="1">poststratify &lt;-<span class="st"> </span><span class="cf">function</span>(weights, model, given, ...) {</a>
+<a class="sourceLine" id="cb2-2" data-line-number="2">  weights <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb2-3" data-line-number="3"><span class="st">    </span><span class="kw">mutate</span>(<span class="dt">n =</span> <span class="dv">10000</span>) <span class="op">%&gt;%</span><span class="st"> </span><span class="co"># binomial model needs number of trials, n</span></a>
+<a class="sourceLine" id="cb2-4" data-line-number="4"><span class="st">    </span>tidybayes<span class="op">::</span><span class="kw">add_predicted_draws</span>( <span class="co"># make predictions</span></a>
+<a class="sourceLine" id="cb2-5" data-line-number="5">      model, </a>
+<a class="sourceLine" id="cb2-6" data-line-number="6">      <span class="dt">allow_new_levels =</span> <span class="ot">TRUE</span>, <span class="co"># some cells not observed!</span></a>
+<a class="sourceLine" id="cb2-7" data-line-number="7">      <span class="dt">prediction =</span> <span class="st">&#39;k&#39;</span>, <span class="co"># number of successful trials</span></a>
+<a class="sourceLine" id="cb2-8" data-line-number="8">      ...</a>
+<a class="sourceLine" id="cb2-9" data-line-number="9">    ) <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb2-10" data-line-number="10"><span class="st">    </span><span class="kw">group_by</span>(<span class="op">!!!</span><span class="kw">syms</span>(given), .draw) <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb2-11" data-line-number="11"><span class="st">    </span><span class="kw">summarise</span>(<span class="dt">probability =</span> <span class="kw">sum</span>(weight <span class="op">*</span><span class="st"> </span>k <span class="op">/</span><span class="st"> </span>n))</a>
+<a class="sourceLine" id="cb2-12" data-line-number="12">}</a></code></pre></div>
+<aside class="notes">
+<ul>
+<li>Fix given levels and poststratify away the rest</li>
+</ul>
+</aside>
+</section><section id="poststratification-1" class="slide level2">
+<h2>Poststratification</h2>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb3-1" data-line-number="1">draws &lt;-<span class="st"> </span>weights <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb3-2" data-line-number="2"><span class="st">  </span><span class="co"># poststratify each case separately to avoid blowing up RAM</span></a>
+<a class="sourceLine" id="cb3-3" data-line-number="3"><span class="st">  </span><span class="kw">group_split</span>(age) <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb3-4" data-line-number="4"><span class="st">  </span>furrr<span class="op">::</span><span class="kw">future_map_dfr</span>( <span class="co"># like map_dfr but in parallel</span></a>
+<a class="sourceLine" id="cb3-5" data-line-number="5">    poststratify, </a>
+<a class="sourceLine" id="cb3-6" data-line-number="6">    model,</a>
+<a class="sourceLine" id="cb3-7" data-line-number="7">    <span class="kw">c</span>(<span class="st">&#39;age&#39;</span>),</a>
+<a class="sourceLine" id="cb3-8" data-line-number="8">    <span class="dt">n =</span> <span class="dv">1000</span> <span class="co"># number of posterior draws</span></a>
+<a class="sourceLine" id="cb3-9" data-line-number="9">  ) </a></code></pre></div>
+<aside class="notes">
+<ul>
+<li>Creating all the data then reducing is inefficient - do it for each fixed level in turn</li>
+</ul>
+</aside>
+</section><section id="raw-vs-adjusted-estimates" class="slide level2">
+<h2>Raw vs adjusted estimates</h2>
+<p><img src="presentation_files/figure-revealjs/comparison-1.svg" width="100%" height="70%" /></p>
+<aside class="notes">
+<ul>
+<li>Everything going down is due to adjusting for engagement</li>
+</ul>
+</aside>
+</section></section>
+<section id="questions" class="title-slide slide level1 coverall" data-background="static/questions.png"><h1>Questions?</h1></section>
+<section><section id="references" class="title-slide slide level1"><h1>References</h1></section><section id="theory" class="slide level2">
+<h2>Theory</h2>
+<ul>
+<li><a href="https://www.aaai.org/ocs/index.php/AAAI/AAAI14/paper/viewFile/8628/8707">Bareinboim, Tian, Pearl: Recovering from Selection Bias</a></li>
+<li><a href="http://www.stat.columbia.edu/~gelman/research/published/poststrat3.pdf">Gelman: MRP</a></li>
+<li><a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/04/forecasting-with-nonrepresentative-polls.pdf">WRGG: Forecasting elections with non-representative polls</a></li>
+</ul>
+</section><section id="tutorials" class="slide level2">
+<h2>Tutorials</h2>
+<ul>
+<li><a href="https://timmastny.rbind.io/blog/multilevel-mrp-tidybayes-brms-stan/">Mastny: MRP in brms</a></li>
+<li><a href="https://www.princeton.edu/~jkastell/mrp_primer.html">Kastellec: MRP in lme4</a></li>
+<li><a href="https://austinrochford.com/posts/2017-07-09-mrpymc3.html">Rochford: MRP in pymc3</a></li>
+</ul>
+</section><section id="packages" class="slide level2">
+<h2>Packages</h2>
+<ul>
+<li><a href="http://cran.rapporter.net/web/packages/brms/index.html">brms</a></li>
+<li><a href="https://cran.r-project.org/web/packages/tidybayes/index.html">tidybayes</a></li>
+<li><a href="https://cran.r-project.org/web/packages/tidyverse/index.html">tidyverse</a></li>
+<li><a href="https://mc-stan.org/users/interfaces/loo">loo</a></li>
+</ul>
+</section><section id="other" class="slide level2">
+<h2>Other</h2>
+<ul>
+<li><a href="https://www.patreon.com/posts/betancourting-4-26159838">Betancourting Disaster: Generalizables and Majors</a></li>
+<li><a href="http://bayes.cs.ucla.edu/PRIMER/">Pearl, Glymour, Jewell: Causal inference in statistics: a primer</a></li>
+<li><a href="https://statmodeling.stat.columbia.edu/2019/01/08/book-pearl-mackenzie/">Gelman: Opinions on the Book of Why</a></li>
+</ul>
+</section></section>
+<section><section id="selection-backdoor-criterion" class="title-slide slide level1"><h1>Selection-backdoor criterion</h1></section><section id="definition" class="slide level2">
+<h2>Definition</h2>
+<p>Let <span class="math inline">\(G\)</span> be a graph where nodes in <span class="math inline">\(T\)</span> are measured in both sample and population, and nodes in <span class="math inline">\(M\)</span> only in the sample. Then nodes <span class="math inline">\(Z\)</span> are said to satisfy the <strong>s-backdoor criterion</strong> relative to <span class="math inline">\((X, Y)\)</span> if</p>
+<ol type="1">
+<li><span class="math inline">\(X\)</span> and <span class="math inline">\(Z\)</span> block all paths between <span class="math inline">\(S\)</span> and <span class="math inline">\(Y\)</span>; and</li>
+<li><span class="math inline">\(Z_D\)</span> blocks all backdoor paths from <span class="math inline">\(X\)</span> to <span class="math inline">\(Y\)</span>;</li>
+<li><span class="math inline">\(X\)</span> and <span class="math inline">\(Z_D\)</span> block all paths between <span class="math inline">\(Z_O\)</span> and <span class="math inline">\(Y\)</span>;</li>
+<li><span class="math inline">\(Z \cup \{X,Y\} \subset M\)</span> and <span class="math inline">\(Z \subset T\)</span>;</li>
+</ol>
+<p>where <span class="math inline">\(Z_D := Z \cap \text{Desc}(X)\)</span> and <span class="math inline">\(Z_O := Z - Z_D\)</span>.</p>
+<aside class="notes">
+<ul>
+<li>1 is the important one for selection bias</li>
+<li>2 is the backdoor criterion</li>
+<li>3 makes 3 and 1 compatible</li>
+<li>4 are necessary for poststratification</li>
+</ul>
+</aside>
+</section></section>
+<section><section id="model-details" class="title-slide slide level1"><h1>Model details</h1></section><section id="estimates" class="slide level2">
+<h2>Estimates</h2>
+<p><img src="presentation_files/figure-revealjs/model_estimates-1.svg" width="100%" height="70%" /></p>
+</section><section id="diagnostics" class="slide level2">
+<h2>Diagnostics</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb4-1" data-line-number="1">model<span class="op">$</span>fit <span class="op">%&gt;%</span><span class="st"> </span>rstan<span class="op">::</span><span class="kw">check_hmc_diagnostics</span>()</a></code></pre></div>
+<pre><code>
+Divergences:</code></pre>
+<pre><code>0 of 6000 iterations ended with a divergence.</code></pre>
+<pre><code>
+Tree depth:</code></pre>
+<pre><code>0 of 6000 iterations saturated the maximum tree depth of 10.</code></pre>
+<pre><code>
+Energy:</code></pre>
+<pre><code>E-BFMI indicated no pathological behavior.</code></pre>
+</section><section id="trace" class="slide level2">
+<h2>Trace</h2>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb11-1" data-line-number="1">model <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb11-2" data-line-number="2"><span class="st">  </span><span class="kw">plot</span>(., <span class="kw">head</span>(<span class="kw">get_variables</span>(.), <span class="dv">4</span>))</a></code></pre></div>
+<p><img src="presentation_files/figure-revealjs/model_trace-1.svg" width="768" /></p>
+</section><section id="summary" class="slide level2">
+<h2>Summary</h2>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb12-1" data-line-number="1">model <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">summary</span>()</a></code></pre></div>
+<pre><code> Family: binomial 
+  Links: mu = logit 
+Formula: outcome | trials(n) ~ 1 + (1 | age) + (1 | engagement) + (1 | country) 
+   Data: df %&gt;% group_by(continent, country, engagement, ag (Number of observations: 1278) 
+Samples: 4 chains, each with iter = 3000; warmup = 1500; thin = 1;
+         total post-warmup samples = 6000
+
+Group-Level Effects: 
+~age (Number of levels: 8) 
+              Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+sd(Intercept)     0.33      0.13     0.16     0.67       1712 1.00
+
+~country (Number of levels: 143) 
+              Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+sd(Intercept)     0.36      0.05     0.27     0.47       2025 1.00
+
+~engagement (Number of levels: 4) 
+              Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+sd(Intercept)     0.46      0.28     0.15     1.22       1992 1.00
+
+Population-Level Effects: 
+          Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+Intercept    -1.50      0.31    -2.13    -0.89       1686 1.00
+
+Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
+is a crude measure of effective sample size, and Rhat is the potential 
+scale reduction factor on split chains (at convergence, Rhat = 1).</code></pre>
+</section></section>
+    </div>
+  </div>
+
+  <script src="presentation_files/reveal.js-3.3.0.1/lib/js/head.min.js"></script>
+  <script src="presentation_files/reveal.js-3.3.0.1/js/reveal.js"></script>
+
+  <script>
+
+      // Full list of configuration options available at:
+      // https://github.com/hakimel/reveal.js#configuration
+      Reveal.initialize({
+        // Display the page number of the current slide
+        slideNumber: false,
+        // Push each slide change to the browser history
+        history: true,
+        // Vertical centering of slides
+        center: true,
+        // Opens links in an iframe preview overlay
+        previewLinks: true,
+        // Transition style
+        transition: 'default', // none/fade/slide/convex/concave/zoom
+        // Transition style for full page slide backgrounds
+        backgroundTransition: 'default', // none/fade/slide/convex/concave/zoom
+
+
+
+        // Optional reveal.js plugins
+        dependencies: [
+          { src: 'presentation_files/reveal.js-3.3.0.1/plugin/notes/notes.js', async: true },
+        ]
+      });
+    </script>
+  <!-- dynamically load mathjax for compatibility with self-contained -->
+  <script>
+    (function () {
+      var script = document.createElement("script");
+      script.type = "text/javascript";
+      script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+      document.getElementsByTagName("head")[0].appendChild(script);
+    })();
+  </script>
+
+<script>
+  (function() {
+    if (window.jQuery) {
+      Reveal.addEventListener( 'slidechanged', function(event) {  
+        window.jQuery(event.previousSlide).trigger('hidden');
+        window.jQuery(event.currentSlide).trigger('shown');
+      });
+    }
+  })();
+</script>
+
+
+  </body>
+</html>

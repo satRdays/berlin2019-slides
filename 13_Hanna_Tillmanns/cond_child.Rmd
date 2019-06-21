@@ -1,0 +1,9 @@
+
+##Start conditional child-script
+
+The average price of diamonds with the clarity "SI2" is `r data %>% 
+                  filter(clarity=="SI2") %>% summarise(avg=mean(price)) %>% pull(avg)`.
+
+
+
+

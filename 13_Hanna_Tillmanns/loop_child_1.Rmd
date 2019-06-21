@@ -1,0 +1,17 @@
+
+##First child-script
+
+
+```{r}
+data %>% 
+  filter(substr(cut,1,1)==cut.short) %>% 
+  group_by(price) %>% 
+  summarise(nu=n()) %>% 
+  arrange(price) %>% 
+  mutate(per=cumsum(nu)/sum(nu)*100) %>% 
+  ggplot()+geom_line(aes(x=price,y=per)) +
+  labs(title = paste0("Overview of prices of diamonds of cut ",y),
+       y="cumulated share")
+
+```
+

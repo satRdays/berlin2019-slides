@@ -1,0 +1,17 @@
+
+
+##Start Child-Script
+
+The section gets all the parameters and data from the parent script. 
+
+Myselfe use it mainly for organising my script. 
+
+
+```{r}
+
+  ggplot(data=data) + 
+  geom_bar(aes(x=cut)) +
+  labs(title=paste0("Diamonds of the color ",col))
+
+```
+

@@ -1,0 +1,16 @@
+
+##Second child-script
+
+```{r}
+t<-
+data %>% 
+  filter(substr(cut,1,1)==cut.short&price>=16000) %>% 
+  summarise(t=n()) %>% pull(t)
+
+```
+
+
+`r t` Diamonds of the cut `r y` have a price higher than 16.000. 
+
+
+\newpage

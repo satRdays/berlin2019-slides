@@ -1,0 +1,755 @@
+---
+title: "Estimating Berlin House Prices using rstanarm"
+author: "<br>Corrie Bartelheimer <br /> <br /> <br>"
+date: "June 15, 2019"
+output: 
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: ["xaringan-themer.css", "extra.css"]
+    nature:
+      highlightLines: true  
+      highlightStype: github
+      countIncrementalSlides: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment=NA)
+```
+```{r xaringan-themer, include = FALSE}
+library(xaringanthemer)
+
+
+duo_accent(primary_color = "#1F4257", secondary_color = "#F97B64",
+  header_font_google = google_font("Josefin Sans"),
+  text_font_google   = google_font("Montserrat", "300", "300i"),
+  code_font_google   = google_font("Droid Mono")
+)
+write_extra_css(list(".highlight" = list(color = "#F97B64")))
+```
+```{r, echo=F, results='hide', message=F, warning=F}
+library(rstanarm)
+library(tidyverse)
+library(RColorBrewer)    # nice colors
+library(modelr)
+library(tidybayes)
+load("data/mod_base_default_prior.rda")
+load("data/mod_base.rda")
+load("data/mod_simple.rda")
+load("data/df_m.rda")
+load("data/weakly_informed_prior.rda")
+load("data/informed_prior.rda")
+ggplot <- function(...) ggplot2::ggplot(...) + scale_color_brewer(palette="Set1") +scale_fill_brewer(palette="Set1")
+
+df.model <- df.m %>% 
+  select(gesamtwohnflaeche,  gesamt_kaufpreis, plz) %>%
+  rename(area = gesamtwohnflaeche, price = gesamt_kaufpreis) %>%
+  mutate(area.s = as.numeric(scale(area, scale=T)),
+         price.s = price / 100000) %>%
+  as_tibble
+
+mod <- mod_base_default_prior
+
+standardize <- function(x) {
+  (x - mean(df.model$area)) / sd(df.model$area)
+}
+
+unstandardize <- function(x) {
+  x * sd(df.model$area) + mean(df.model$area)
+}
+
+center <- function(x) {
+  x - mean(df.model$area)
+}
+
+umweltzone <- read_csv("data/umweltzone_plz_zuordnung.csv", col_types = "cc") %>%
+  rename(umweltzone = `Umweltzone Berlin`,
+         plz = Postleitzahl) %>%
+  filter(umweltzone != "außerhalb")
+
+ausserhalb <- read_csv("data/umweltzone_plz_zuordnung.csv", col_types = "cc") %>%
+  rename(umweltzone = `Umweltzone Berlin`,
+         plz = Postleitzahl) %>%
+  filter(umweltzone == "außerhalb")
+
+bigger_text <-   theme(text=element_text(size=20),
+        axis.text = element_text(size=18)) 
+
+bigger_text_wo_axis <- theme(text=element_text(size=20))
+```
+
+# The Data
+--
+```{r, echo=FALSE}
+knitr::include_graphics("images/Europace.png")
+```
+---
+
+## What are good predictors?
+--
+
+- Size
+
+--
+
+- Location, location, location
+
+---
+## How to include ZIP codes in your model?
+--
+
+
+- Encoding, e.g. One-Hot-Encoding
+
+--
+
+- Categorical embedding
+
+--
+
+- One model per ZIP code
+
+--
+
+- Omit
+
+--
+
+- **Hierarchical model**
+
+---
+## Hierarchical Model
+
+In short:
+
+A compromise between **one model per ZIP code** (no pooling) and **ignoring ZIP code information** (complete pooling).
+
+A hierarchical model does **partial pooling**
+---
+
+## The model
+
+
+.large[
+$$\begin{align*}
+\text{Price} &\sim \text{Normal}(\mu, \sigma) \\
+\\
+\\
+\mu &= \alpha_{[ZIP]} + \beta_{[ZIP]} \text{area} \\
+\\
+\\
+\begin{bmatrix}\alpha_{[ZIP]} \\ \beta_{[ZIP]} \end{bmatrix} &\sim \text{Normal}( \begin{bmatrix} \mu_{\alpha} \\ \mu_{\beta} \end{bmatrix}, \Sigma)
+\end{align*}$$
+]
+---
+## How to compute it
+--
+
+> RStanArm allows users to specify models via the customary R commands, where models are specified with formula syntax.
+
+--
+```{r, eval=F}
+library(rstanarm)
+options(mc.cores = parallel::detectCores())
+
+mod <-   stan_lmer( price.s ~  area.s + (1 + area.s | plz)  ,
+          data=df.model)
+```
+--
+A simpler model for comparison:
+```{r, eval=F}
+mod_simple <- stan_glm( price.s ~  area.s   ,
+          data=df.model)
+```
+
+`price.s` is the price in 100,000€s, `area.s` is the standardized living area.
+---
+## What about priors?
+
+Wikipedia:
+> A prior, [..] is the probability distribution that would express one's beliefs about this quantity before some evidence is taken into account.
+
+Or:
+
+**How much do we know about the problem before seeing the data?**
+---
+## What about priors?
+
+RStanArm uses by default **weakly regularized** priors
+--
+```{r}
+prior_summary(mod)
+```
+
+---
+## What about priors?
+
+Visualize the priors:
+```{r, eval=F}
+default_prior  <- stan_glm( price.s ~ area.s,
+                     prior_PD = TRUE,  #<<
+                     data=df.model)
+```
+```{r,prior-plot-weakly,  warning=F, echo=F,  fig.show="hide", warning=F, message=F, fig.height=4, fig.width=8}
+library(bayesplot)
+mcmc_hist(as.matrix(weakly_informed_prior_fit)) +
+  ggtitle("Weakly regularizing prior (default)") + bigger_text
+```
+--
+.center[
+![](`r knitr::fig_chunk("prior-plot-weakly", "png")`)
+]
+---
+## What about priors?
+
+```{r, prior-line-weakly, warning=F, message=F, echo=F, fig.show='hide', fig.width=10, fig.height=7, dpi=150}
+df.model %>%
+  data_grid(area.s = seq(from=-2, to=2, length.out=100)) %>%
+  add_fitted_draws(weakly_informed_prior_fit, n=100) %>%
+  ggplot(aes(x=area.s, y=price.s))+
+  geom_line(aes(y=.value, group=.draw), 
+            alpha=.4, show.legend=F) +
+  geom_segment(aes(y = 0,
+                   yend=0,
+                   x=-2,
+                   xend=2) , col="#E41A1C" , size=1.5)  +
+    geom_segment(aes(y = 85,
+                   yend=85,
+                   x=-2,
+                   xend=2) , col="#377EB8" , size=1.5) +
+  scale_x_continuous(breaks = standardize(c(50, 100, 200) ),
+                     labels= c(50, 100, 200), 
+                     limits = c(-2, 2)) +
+  labs(y="Price (in 100,000s)", x="Area", title="Weakly regularizing prior (default)") +
+  coord_cartesian(xlim=c(-2,2), clip = "off") +
+  theme(plot.margin = unit(c(1,21,1,1), "mm")) +
+  bigger_text +
+  cowplot::draw_label(   x=2.14, y=0, label="0€", size=12,  col="#E41A1C" ) +
+  cowplot::draw_label(   x=2.32, y=85, label="Most expensive\nflat in Berlin", size=12,  col="#377EB8") 
+```
+.center[
+![](`r knitr::fig_chunk("prior-line-weakly", "png")`)
+]
+---
+
+## What about priors?
+
+We can of course also fit our own priors:
+```{r, echo=F}
+mod <- mod_base
+```
+```{r, eval=F}
+mod <- stan_lmer( price.s ~  area.s + (1 + area.s | plz)  ,
+                data=df.model,
+                prior_intercept=normal(location=3, scale=2.5, 
+                                      autoscale = FALSE),
+                prior=normal(location=1, scale=1, 
+                                      autoscale=FALSE)) 
+```
+--
+```{r, prior-plot-informed, warning=F, echo=F, fig.show="hide", warning=F, message=F, fig.height=4, fig.width=8}
+mcmc_hist(as.matrix(informed_prior_fit)) +
+  ggtitle("Informed prior") + bigger_text
+```
+.center[
+![](`r knitr::fig_chunk("prior-plot-informed", "png")`)
+]
+---
+
+## What about priors?
+```{r, prior-line-informed, warning=F, message=F, echo=F, fig.show='hide', fig.width=10, fig.height=7, dpi=150}
+df.model %>%
+  data_grid(area.s = seq(from=-2, to=2, length.out=100)) %>%
+  add_fitted_draws(informed_prior_fit, n=100) %>%
+  ggplot(aes(x=area.s, y=price.s))+
+  geom_line(aes(y=.value, group=.draw), 
+            alpha=.4, show.legend=F) +
+  scale_x_continuous(breaks = standardize(c(50, 100, 200) ),
+                     labels= c(50, 100, 200), 
+                     limits = c(-2, 2)) +
+   geom_segment(aes(y = 0,
+                   yend=0,
+                   x=-2,
+                   xend=2) , col="#E41A1C", size=1.5 )  +
+   # geom_segment(aes(y = 16,
+  #                 yend=16,
+   #                x=-2,
+    #               xend=2) , col="#377EB8", size=1.5 ) +
+  labs(y="Price (in 100,000s)", x="Area", title="Informed prior") +
+  coord_cartesian(xlim=c(-2,2), clip = "off") +
+  theme(plot.margin = unit(c(1,20,1,1), "mm")) +
+  bigger_text +
+  cowplot::draw_label(   x=2.14, y=0, label="0€", size=12,  col="#E41A1C" ) 
+  # cowplot::draw_label(   x=2.3, y=16, label="Penthouse\nin Munich", size=12,  col="#377EB8") 
+```
+.center[
+![](`r knitr::fig_chunk("prior-line-informed", "png")`)
+]
+---
+## Assessing convergence
+
+```{r, eval=F}
+launch_shinystan(mod)
+```
+---
+class: center, middle
+.gif[
+![](images/shinystan_small.gif)
+]
+
+---
+
+## Model comparison
+--
+```{r, eval=F}
+library(loo)
+l_mod <- loo(mod)
+l_simple <- loo(mod_simple)
+
+compare_models(l_mod, l_simple)
+```
+```{r, echo=F}
+load("data/loo_base.rda")
+load("data/loo_simple.rda")
+compare_models(l_base, l_simple)
+```
+
+---
+
+## Analyzing the results & Prediction
+--
+
+Extract fitted draws
+```{r, message=F, warning=F, fig.height=8}
+mitte <- c("10119", "10178", "10179", "10783")
+library(tidybayes)
+library(modelr)
+df.model %>%
+  filter(plz %in% mitte) %>%
+  group_by(plz) %>%
+  data_grid(area.s = seq_range(area.s, n=100)) %>% #<<
+  add_fitted_draws(mod, n=50) %>% #<<
+  head()
+```
+---
+
+## Analyzing the results & Prediction
+```{r, plot-mitte, fig.height=7, fig.width=7, echo=F, message=F, warning=F, fig.show="hide"}
+df.model %>%
+  filter(plz %in% mitte) %>%
+  group_by(plz) %>%
+  data_grid(area.s = seq_range(area.s, n=100)) %>%
+  add_fitted_draws(mod, n=50) %>%
+  ggplot(aes(x=area.s, y=price.s, color=plz))+
+  geom_line(aes(y=.value, group=.draw), 
+            alpha=.1, show.legend=F) +
+  geom_point(data=df.model %>% filter(plz %in% mitte), 
+             col="black", size=0.5) +
+  facet_wrap(~plz) +
+  scale_x_continuous(breaks = standardize(c(50, 100, 200, 300) ),
+                     labels= c(50, 100, 200, 300), 
+                     limits = c(-2, 4)) +
+  labs(y="Price", x="Area", main="Prices in Mitte") +
+  theme(panel.spacing=unit(3, "lines")) + bigger_text
+```
+.center[ 
+![](`r knitr::fig_chunk("plot-mitte", "png")`)
+]
+
+---
+## Analyzing the results & Prediction
+Extract posterior predictions
+```{r}
+df.model %>%
+  filter(plz %in% mitte) %>%
+  group_by(plz) %>%
+  data_grid(area.s = seq_range(area.s, n=100) ) %>%
+  add_predicted_draws(mod, n=100) %>% #<<
+  head()
+```
+---
+## Analyzing the results & Prediction
+```{r, plot-mitte-post, fig.show="hide", fig.height=7, fig.width=7, echo=F}
+df.model %>%
+  filter(plz %in% mitte) %>%
+  group_by(plz) %>%
+  data_grid(area.s = seq_range(area.s, n=100) ) %>%
+  add_predicted_draws(mod, n=100) %>%
+  ggplot(aes(x=area.s, y=price.s, fill=plz, col=plz))+
+  stat_lineribbon(aes(y=.prediction), .width= c(.89, .51), alpha=.25, 
+                  show.legend=FALSE) +
+  geom_point(data=df.model %>% filter(plz %in% mitte), 
+             col="black", size=0.5, show.legend = FALSE) +
+  facet_wrap(~plz) +
+  scale_x_continuous(breaks = standardize(c(50, 100, 200, 300) ),
+                     labels= c(50, 100, 200, 300), 
+                     limits = c(-2, 4)) +
+  labs(y="Price", x="Area", main="Prices in Mitte") +
+  theme(panel.spacing=unit(3, "lines")) + bigger_text
+```
+.center[ 
+![](`r knitr::fig_chunk("plot-mitte-post", "png")`)
+]
+
+---
+
+## Analyzing the results & Prediction
+We can predict using the RstanArm function `posterior_predict()` 
+```{r}
+nd <- data.frame(area.s=standardize(101), plz="10407") 
+post <- posterior_predict(mod, newdata=nd) 
+```
+```{r, post-hist, fig.show="hide", fig.height=4, echo=F, dpi=100}
+hist(post, main="Posterior for a 101sqm house in 10407", 
+     xlab="Price in 100,000s", cex.lab=1.5, cex.axis=1.5, cex.main=1.5)
+```
+.center[ 
+![](`r knitr::fig_chunk("post-hist", "png")`)
+]
+---
+
+## What is the probability
+We can use the posterior to answer questions such as
+
+>  "What is the probability that a house in 10407 (Prenzlauer Berg) of 101sqm has a price less than 300,000€?"
+
+```{r}
+mean( post < 3 )
+```
+--
+```{r, post-dot-prob, fig.show="hide", echo=F, message=F, warning=F, fig.height=4, dpi=80}
+set.seed(2407)
+quants <- data.frame() %>%
+  data_grid(area.s=standardize(101),
+            plz = "10407") %>%
+  add_predicted_draws(mod) %>%
+  do(data_frame( .value = quantile(.$.prediction, ppoints(100)))) %>%
+  mutate(cheap = .value < 3)
+
+quants %>% 
+  ggplot(aes(x= .value, fill=cheap)) +
+  geom_dotplot(binwidth=.3, show.legend=FALSE, binpositions = "all") +
+  scale_fill_manual(values = c("gray", "light blue"))+
+  scale_y_continuous(breaks = NULL) +
+  scale_x_continuous(breaks = c(2,3,4,6,8)) +
+  xlab("Prices in 100,000s") +
+  ylab("") + bigger_text
+```
+.center[ 
+![](`r knitr::fig_chunk("post-dot-prob", "png")`)
+]
+
+---
+## Visualizing the Results
+```{r, echo=FALSE, results='hide', message=F, warning=F}
+
+library(rgdal)           # for working with shapefiles
+# Shapefiles downloaded from here: 
+# https://www.suche-postleitzahl.org/downloads
+bezirke.spdf <- readOGR('data/plz-gebiete.shp/plz-gebiete.shp')
+bezirke.spdf@data$id = rownames(bezirke.spdf@data)
+bezirke.spdf@data$area <- sapply(bezirke.spdf@polygons, slot, "area")
+bezirke.df <- fortify(bezirke.spdf, region="id") %>%
+  inner_join(bezirke.spdf@data, by='id') %>%
+  select(-note)
+
+# zuordnung file also from 
+# https://www.suche-postleitzahl.org/downloads
+plz.names <- read_csv("data/zuordnung_plz_ort.csv") %>% distinct(plz, .keep_all = T)
+bezirke.df <- bezirke.df %>% 
+  inner_join(plz.names, by='plz')
+
+berlin.df <- bezirke.df %>%
+  filter(bundesland == "Berlin") %>%
+  left_join(umweltzone, by="plz")
+
+
+# Mittelpunkte der PLZ Bezirke für das spätere Label
+centroids <- aggregate(cbind(long, lat) ~ plz, data=berlin.df, FUN=mean) %>%
+  filter(plz %in%  c("10179", "10407", "10783"))
+
+
+berlin.plz.map <- ggplot(data=berlin.df,
+       aes(x=long, y=lat, group=group)) +
+  geom_polygon(fill=NA, 
+               alpha=0.5,
+               colour='black',
+               size=0.3, show.legend = F) +
+  coord_map(projection='mercator') + 
+  labs(title='Berlin PLZ Shapes',
+       x="",
+       y="") + theme(axis.text = element_blank(),
+                                           axis.line = element_blank(),
+                                           axis.ticks = element_blank())
+
+ring.plz.map <- ggplot(data=berlin.df %>% filter(!is.na(umweltzone)),
+       aes(x=long, y=lat, group=group)) +
+  geom_polygon(fill=NA, 
+               alpha=0.5,
+               colour='black',
+               size=0.3, show.legend = F) +
+  coord_map(projection='mercator') + 
+  labs(title='Berlin PLZ Shapes',
+       x="",
+       y="") + theme(axis.text = element_blank(),
+                                           axis.line = element_blank(),
+                                           axis.ticks = element_blank())
+
+
+#### TODO: extract with tidybayes instead
+cfs <- coef(mod)$plz
+cfs$intercept <- cfs$`(Intercept)`
+cfs$intercept.bin <- cut(cfs$intercept,
+                         c(0, 2.5, 3, 3.5, 4, 4.5, 5, 10),
+                         labels=c("less than 250", "250-300", "300-350", 
+                                  "350-400", "400-450", "450-500", "more than 500"))
+
+cfs$area.bin <- cut(  (cfs$area.s / sd(df.model$area)) *100000,
+                                  c(0, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 6000, 10000),
+                                  labels=c("less than 2000", "2000-2500", "2500-3000", 
+                                           "3000-3500", "3500-4000", "4000-4500", "4500-5000", "5000-6000", "more than 6000"))
+
+cfs$plz <- rownames(cfs)
+
+berlin.df.cf <- berlin.df %>%
+  left_join(cfs, by='plz') 
+
+ring.df <- berlin.df.cf %>%
+  filter(!is.na(umweltzone))
+
+plot_intercept <- berlin.plz.map + 
+  geom_polygon(data=berlin.df.cf %>% filter(!is.na(intercept.bin)),
+               aes(x=long, y=lat,
+                   group=group, fill=intercept.bin),
+               color="white", size=0.2,
+               show.legend = T) +
+  scale_color_brewer(type="seq", palette="YlOrRd", aesthetics = "fill",
+                     name="Intercept\nin 000s", drop=F)  +
+  labs(title="") 
+  #labs(title='Intercept', subtitle='Price Estimate for an Average House (104sqm)') 
+
+ring_intercept <- ring.plz.map + 
+  geom_polygon(data=ring.df %>% filter(!is.na(intercept.bin)),
+               aes(x=long, y=lat,
+                   group=group, fill=intercept.bin),
+               color="white", size=0.2,
+               show.legend = T) +
+  scale_color_brewer(type="seq", palette="YlOrRd", aesthetics = "fill",
+                     name="Intercept\nin 000s", drop=F) + 
+  labs(title='Intercept (inside the Ring)', subtitle='Price Estimate for an Average House (104sqm)') 
+  
+
+plot_slope<- berlin.plz.map + 
+  geom_polygon(data=berlin.df.cf %>% filter(!is.na(area.bin)),
+               aes(x=long, y=lat,
+                   group=group, fill=area.bin),  
+               color="white", size=0.2,
+                show.legend = T) +
+   scale_color_brewer(type="seq", palette="YlOrRd", aesthetics = "fill",
+                     name="Slope\nin € per sqm", drop=F) +
+  labs(title='Slope') 
+
+ring_slope<- ring.plz.map + 
+  geom_polygon(data=ring.df %>% filter(!is.na(area.bin)),
+               aes(x=long, y=lat,
+                   group=group, fill=area.bin),  
+               color="white", size=0.2,
+                show.legend = T) +
+    scale_color_brewer(type="seq", palette="YlOrRd", aesthetics = "fill",
+                     name="Slope\nin € per sqm", drop=F) +
+  labs(title='Slope (inside the Ring)') 
+```
+Price estimate for an average house (104sqm)
+```{r, plot-intercept, fig.height=6, fig.width=10, fig.show="hide", echo=F, dpi=300}
+plot_intercept + bigger_text_wo_axis
+```
+.center[ 
+![](`r knitr::fig_chunk("plot-intercept", "png")`)
+]
+---
+Slope - Estimate for the price per sqm
+```{r, plot-slope, fig.show="hide", echo=F, fig.height=6, fig.width=8, dpi=300}
+plot_slope + labs(title="") + bigger_text_wo_axis
+```
+.center[ 
+![](`r knitr::fig_chunk("plot-slope", "png")`)
+]
+---
+Posterior Probability that a house of 101sqm has a price less than 300,000€
+```{r, ring-prob, fig.show="hide", echo=F, fig.height=6, fig.width=8, dpi=280, message=F, warning=F}
+pred <- df.model %>% 
+  group_by(plz) %>% 
+  data_grid(area.s=standardize(101)) %>% 
+  add_predicted_draws(mod, n=1000) %>% 
+  mutate(cheap = .prediction < 3) %>% 
+  summarise(m=mean(cheap))  %>%
+  mutate(m.bin= cut(m,
+                c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 1),
+                         labels=c("less than 10%", "10-20%", 
+                                  "20-30%", "30-40%","40-50%", "more than 50%")))
+
+berlin.df.cf <- berlin.df %>%
+  left_join(pred, by='plz') 
+
+ring.df <- berlin.df.cf %>%
+  filter(!is.na(umweltzone))
+
+plot_prob <- ring.plz.map + 
+  geom_polygon(data=ring.df %>% filter(!is.na(m)),
+               aes(x=long, y=lat,
+                   group=group, fill=m.bin),
+               color="white", size=0.2,
+               show.legend = T) +
+  scale_color_brewer(type="div", palette="RdYlGn", aesthetics = "fill",
+                    name="", drop=F) +
+  labs(title='Probability', subtitle='that a house of 101sqm has a price less than 300,000€') 
+
+plot_prob +
+  geom_text(data=centroids, mapping=aes(x=long, y=lat, label=plz, group=plz), 
+            col='black', size=2) + labs(title="", subtitle="") + bigger_text_wo_axis
+```
+.center[ 
+![](`r knitr::fig_chunk("ring-prob", "png")`)
+]
+
+---
+### Closer look on 12047
+```{r, plot-12047, fig.height=7, fig.width=7, echo=F, message=F, warning=F, fig.show="hide"}
+df.model %>%
+  filter( plz == "12047") %>%
+  data_grid(area.s = seq_range(area.s, n=100), plz = "12047" ) %>%
+  add_fitted_draws(mod, n=50) %>%
+  ggplot(aes(x=area.s, y=price.s, color=plz))+
+  geom_line(aes(y=.value, group=.draw), 
+            alpha=.1, show.legend=F) +
+  geom_point(data=df.model %>% filter(plz == "12047"), 
+             col="black", size=1) +
+  scale_x_continuous(breaks = standardize(seq(50, 500, by=50) ),
+                     labels= seq(50, 500, by=50)) +
+  labs(y="Price", x="Area", title="Prices in 12047 (Neukölln)")  +
+  theme(text=element_text(size=20),
+        axis.text = element_text(size=20)) 
+```
+.center[ 
+![](`r knitr::fig_chunk("plot-12047", "png")`)
+]
+---
+## Things to improve
+
+--
+- Many outliers in the data
+
+--
+
+  - Price for large houses difficult to predict
+  
+--
+
+- Important predictors still missing
+
+--
+
+  - Object type (e.g. house or flat)
+  
+--
+
+  - Time
+  
+--
+
+- No information about similarity of neighborhoods included
+
+--
+  
+  - Multiple Levels
+  
+```{r, eval=F, echo=F}
+df.m %>% 
+  filter(jahr <2019 & jahr >= 2016) %>% 
+  group_by(jahr) %>% 
+  summarize(med = median(gesamt_kaufpreis), 
+            m= mean(gesamt_kaufpreis), 
+            n=n(), 
+            se=sd(gesamt_kaufpreis)/sqrt(n),
+            sd=sd(gesamt_kaufpreis)) %>% 
+  ggplot(aes(x=jahr, y=m, ymin=m-se, ymax=m+se)) +
+  geom_point() + 
+  geom_line() + 
+  geom_linerange() +
+  scale_y_continuous(labels=function(x) x / 100000, name="Average Price") +
+  scale_x_continuous(breaks=c(2016, 2017, 2018), name="Year")
+```
+
+
+```{r, eval=F, echo=F}
+mod %>% 
+  spread_draws(`(Intercept)`, area.s, b[term, group]) %>% 
+  separate(group, c("group", "plz"), ":") %>%
+  spread( term, b, sep="_") %>%
+  mutate(intercept = `(Intercept)` + `term_(Intercept)`,
+         area.s = area.s + term_area.s) %>%
+  mutate(inside_ring = ( plz %in% umweltzone$plz),
+         area = (area.s / sd(df.model$area)) * 100000)  %>%
+  group_by(inside_ring) %>%
+  median_qi(intercept, area, .width=0.89)
+```
+```{r, eval=F, echo=F}
+mod %>% 
+  spread_draws(`(Intercept)`, area.s, b[term, group]) %>% 
+  separate(group, c("group", "plz"), ":") %>%
+  spread( term, b, sep="_") %>%
+  mutate(intercept = `(Intercept)` + `term_(Intercept)`,
+         area.s = area.s + term_area.s) %>%
+  mutate(inside_ring = ( plz %in% umweltzone$plz),
+         area = (area.s / sd(df.model$area)) * 100000)  %>%
+  group_by(inside_ring) %>%
+  mean_qi(intercept, area, .width=0.89)
+```
+
+```{r, eval=F, echo=F}
+mod %>% 
+  spread_draws(`(Intercept)`, area.s, b[term, group]) %>% 
+  separate(group, c("group", "plz"), ":") %>%
+  spread( term, b, sep="_") %>%
+  mutate(intercept = `(Intercept)` + `term_(Intercept)`,
+         area.s = area.s + term_area.s) %>%
+  mutate(area = (area.s / sd(df.model$area)) * 100000)  %>%
+  mean_qi(intercept, area, .width=0.89)
+```
+
+---
+## Summary
+
+- Houses in Berlin are expensive
+  
+--
+
+- Affordable locations are mostly outside the ring
+
+--
+
+- RStanArm and co make Bayesian modelling very accessible
+
+--
+  - For more complex models, use RStan or brms
+
+---
+## Thank you!
+
+- Questions?
+
+
+- Slides and Code on `r icon::fa("github")`: 
+
+  [https://github.com/corriebar/Estimating-Houseprices](https://github.com/corriebar/Estimating-Houseprices)
+
+
+- `r icon::fa("twitter")` [@corrieaar](https://twitter.com/corrieaar)
+
+- Blog: [https://www.samples-of-thoughts.com/](https://www.samples-of-thoughts.com/)
+
+- `r icon::fa("meetup")` If want to learn more, come to our meetup: [http://meetu.ps/c/41dg1/v14wk/f](http://meetu.ps/c/41dg1/v14wk/f)
+.center[
+```{r, echo=FALSE, out.height=130}
+knitr::include_graphics("images/meetup.jpeg", dpi=10)
+```
+]

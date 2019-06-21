@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+  <head>
+    <title>Estimating Berlin House Prices using rstanarm</title>
+    <meta charset="utf-8" />
+    <meta name="author" content=" Corrie Bartelheimer" />
+    <meta name="date" content="2019-06-15" />
+    <link href="libs/font-awesome-5.3.1/css/fontawesome-all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="xaringan-themer.css" type="text/css" />
+    <link rel="stylesheet" href="extra.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Estimating Berlin House Prices using rstanarm
+### <br>Corrie Bartelheimer <br /> <br /> <br>
+### June 15, 2019
+
+---
+
+
+
+
+
+
+# The Data
+--
+![](images/Europace.png)&lt;!-- --&gt;
+---
+
+## What are good predictors?
+--
+
+- Size
+
+--
+
+- Location, location, location
+
+---
+## How to include ZIP codes in your model?
+--
+
+
+- Encoding, e.g. One-Hot-Encoding
+
+--
+
+- Categorical embedding
+
+--
+
+- One model per ZIP code
+
+--
+
+- Omit
+
+--
+
+- **Hierarchical model**
+
+---
+## Hierarchical Model
+
+In short:
+
+A compromise between **one model per ZIP code** (no pooling) and **ignoring ZIP code information** (complete pooling).
+
+A hierarchical model does **partial pooling**
+---
+
+## The model
+
+
+.large[
+`$$\begin{align*}
+\text{Price} &amp;\sim \text{Normal}(\mu, \sigma) \\
+\\
+\\
+\mu &amp;= \alpha_{[ZIP]} + \beta_{[ZIP]} \text{area} \\
+\\
+\\
+\begin{bmatrix}\alpha_{[ZIP]} \\ \beta_{[ZIP]} \end{bmatrix} &amp;\sim \text{Normal}( \begin{bmatrix} \mu_{\alpha} \\ \mu_{\beta} \end{bmatrix}, \Sigma)
+\end{align*}$$`
+]
+---
+## How to compute it
+--
+
+&gt; RStanArm allows users to specify models via the customary R commands, where models are specified with formula syntax.
+
+--
+
+```r
+library(rstanarm)
+options(mc.cores = parallel::detectCores())
+
+mod &lt;-   stan_lmer( price.s ~  area.s + (1 + area.s | plz)  ,
+          data=df.model)
+```
+--
+A simpler model for comparison:
+
+```r
+mod_simple &lt;- stan_glm( price.s ~  area.s   ,
+          data=df.model)
+```
+
+`price.s` is the price in 100,000€s, `area.s` is the standardized living area.
+---
+## What about priors?
+
+Wikipedia:
+&gt; A prior, [..] is the probability distribution that would express one's beliefs about this quantity before some evidence is taken into account.
+
+Or:
+
+**How much do we know about the problem before seeing the data?**
+---
+## What about priors?
+
+RStanArm uses by default **weakly regularized** priors
+--
+
+```r
+prior_summary(mod)
+```
+
+```
+Priors for model 'mod' 
+------
+Intercept (after predictors centered)
+ ~ normal(location = 0, scale = 10)
+     **adjusted scale = 21.58
+
+Coefficients
+ ~ normal(location = 0, scale = 2.5)
+     **adjusted scale = 5.40
+
+Auxiliary (sigma)
+ ~ exponential(rate = 1)
+     **adjusted scale = 2.16 (adjusted rate = 1/adjusted scale)
+
+Covariance
+ ~ decov(reg. = 1, conc. = 1, shape = 1, scale = 1)
+------
+See help('prior_summary.stanreg') for more details
+```
+
+---
+## What about priors?
+
+Visualize the priors:
+
+```r
+default_prior  &lt;- stan_glm( price.s ~ area.s,
+*                    prior_PD = TRUE,
+                     data=df.model)
+```
+
+--
+.center[
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/prior-plot-weakly-1.png)
+]
+---
+## What about priors?
+
+
+.center[
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/prior-line-weakly-1.png)
+]
+---
+
+## What about priors?
+
+We can of course also fit our own priors:
+
+
+```r
+mod &lt;- stan_lmer( price.s ~  area.s + (1 + area.s | plz)  ,
+                data=df.model,
+                prior_intercept=normal(location=3, scale=2.5, 
+                                      autoscale = FALSE),
+                prior=normal(location=1, scale=1, 
+                                      autoscale=FALSE)) 
+```
+--
+
+.center[
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/prior-plot-informed-1.png)
+]
+---
+
+## What about priors?
+
+.center[
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/prior-line-informed-1.png)
+]
+---
+## Assessing convergence
+
+
+```r
+launch_shinystan(mod)
+```
+---
+class: center, middle
+.gif[
+![](images/shinystan_small.gif)
+]
+
+---
+
+## Model comparison
+--
+
+```r
+library(loo)
+l_mod &lt;- loo(mod)
+l_simple &lt;- loo(mod_simple)
+
+compare_models(l_mod, l_simple)
+```
+
+```
+
+Model comparison: 
+(negative 'elpd_diff' favors 1st model, positive favors 2nd) 
+
+elpd_diff        se 
+  -1903.6     135.5 
+```
+
+---
+
+## Analyzing the results &amp; Prediction
+--
+
+Extract fitted draws
+
+```r
+mitte &lt;- c("10119", "10178", "10179", "10783")
+library(tidybayes)
+library(modelr)
+df.model %&gt;%
+  filter(plz %in% mitte) %&gt;%
+  group_by(plz) %&gt;%
+* data_grid(area.s = seq_range(area.s, n=100)) %&gt;%
+* add_fitted_draws(mod, n=50) %&gt;%
+  head()
+```
+
+```
+# A tibble: 6 x 7
+# Groups:   plz, area.s, .row [1]
+  plz   area.s  .row .chain .iteration .draw .value
+  &lt;chr&gt;  &lt;dbl&gt; &lt;int&gt;  &lt;int&gt;      &lt;int&gt; &lt;int&gt;  &lt;dbl&gt;
+1 10119  -1.16     1     NA         NA    12   1.26
+2 10119  -1.16     1     NA         NA    53   2.00
+3 10119  -1.16     1     NA         NA    66   1.48
+4 10119  -1.16     1     NA         NA   301   1.94
+5 10119  -1.16     1     NA         NA   380   1.25
+6 10119  -1.16     1     NA         NA   530   1.18
+```
+---
+
+## Analyzing the results &amp; Prediction
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/plot-mitte-1.png)
+]
+
+---
+## Analyzing the results &amp; Prediction
+Extract posterior predictions
+
+```r
+df.model %&gt;%
+  filter(plz %in% mitte) %&gt;%
+  group_by(plz) %&gt;%
+  data_grid(area.s = seq_range(area.s, n=100) ) %&gt;%
+* add_predicted_draws(mod, n=100) %&gt;%
+  head()
+```
+
+```
+# A tibble: 6 x 7
+# Groups:   plz, area.s, .row [1]
+  plz   area.s  .row .chain .iteration .draw .prediction
+  &lt;chr&gt;  &lt;dbl&gt; &lt;int&gt;  &lt;int&gt;      &lt;int&gt; &lt;int&gt;       &lt;dbl&gt;
+1 10119  -1.16     1     NA         NA     1       2.15 
+2 10119  -1.16     1     NA         NA     2       0.221
+3 10119  -1.16     1     NA         NA     3      -0.421
+4 10119  -1.16     1     NA         NA     4       1.68 
+5 10119  -1.16     1     NA         NA     5       2.28 
+6 10119  -1.16     1     NA         NA     6       2.23 
+```
+---
+## Analyzing the results &amp; Prediction
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/plot-mitte-post-1.png)
+]
+
+---
+
+## Analyzing the results &amp; Prediction
+We can predict using the RstanArm function `posterior_predict()` 
+
+```r
+nd &lt;- data.frame(area.s=standardize(101), plz="10407") 
+post &lt;- posterior_predict(mod, newdata=nd) 
+```
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/post-hist-1.png)
+]
+---
+
+## What is the probability
+We can use the posterior to answer questions such as
+
+&gt;  "What is the probability that a house in 10407 (Prenzlauer Berg) of 101sqm has a price less than 300,000€?"
+
+
+```r
+mean( post &lt; 3 )
+```
+
+```
+[1] 0.065
+```
+--
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/post-dot-prob-1.png)
+]
+
+---
+## Visualizing the Results
+
+Price estimate for an average house (104sqm)
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/plot-intercept-1.png)
+]
+---
+Slope - Estimate for the price per sqm
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/plot-slope-1.png)
+]
+---
+Posterior Probability that a house of 101sqm has a price less than 300,000€
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/ring-prob-1.png)
+]
+
+---
+### Closer look on 12047
+
+.center[ 
+![](Estimating-Houseprices-with-rstanarm_files/figure-html/plot-12047-1.png)
+]
+---
+## Things to improve
+
+--
+- Many outliers in the data
+
+--
+
+  - Price for large houses difficult to predict
+  
+--
+
+- Important predictors still missing
+
+--
+
+  - Object type (e.g. house or flat)
+  
+--
+
+  - Time
+  
+--
+
+- No information about similarity of neighborhoods included
+
+--
+  
+  - Multiple Levels
+  
+
+
+
+
+
+
+
+
+---
+## Summary
+
+- Houses in Berlin are expensive
+  
+--
+
+- Affordable locations are mostly outside the ring
+
+--
+
+- RStanArm and co make Bayesian modelling very accessible
+
+--
+  - For more complex models, use RStan or brms
+
+---
+## Thank you!
+
+- Questions?
+
+
+- Slides and Code on <i class="fab  fa-github "></i>: 
+
+  [https://github.com/corriebar/Estimating-Houseprices](https://github.com/corriebar/Estimating-Houseprices)
+
+
+- <i class="fab  fa-twitter "></i> [@corrieaar](https://twitter.com/corrieaar)
+
+- Blog: [https://www.samples-of-thoughts.com/](https://www.samples-of-thoughts.com/)
+
+- <i class="fab  fa-meetup "></i> If want to learn more, come to our meetup: [http://meetu.ps/c/41dg1/v14wk/f](http://meetu.ps/c/41dg1/v14wk/f)
+.center[
+&lt;img src="images/meetup.jpeg" height="130" /&gt;
+]
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightLines": true,
+"highlightStype": "github",
+"countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();</script>
+
+<script>
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

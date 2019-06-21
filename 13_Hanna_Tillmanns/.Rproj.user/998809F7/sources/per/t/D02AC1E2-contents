@@ -1,0 +1,181 @@
+---
+author: "Hanna Tillmanns (WIdO)" 
+date: '`r paste("Stand: ",format(Sys.Date(), "%d.%m.%Y"),sep="")`'
+header-includes:
+- \renewcommand{\contentsname}{} #Changing title of content, here none
+
+output: 
+  pdf_document:
+    keep_tex: true
+    toc: true
+    toc_depth: 2
+    number_sections: true
+subparagraph: true
+fontsize: 12pt
+tables: true  
+params:
+   col: "E"
+
+title: \vspace{3in}`r paste0("Report about ",params$col,"-colored Diamonds")`
+---
+
+#Defining parameters "outside" the script
+
+To be able to render the scripts with different parameters and not having to start it by hand, I use the "params"-value of the YAML.
+
+
+The scripts are then startet with rmarkdown::render. 
+
+
+#Define all the general things and import the data
+
+First things first. At the beginning I load all libraries, define the general parameters and import all of the data. In my case importing the data takes some time, therefore it is nice not having to repeat this for every single child-script, especially those that run several times. 
+
+
+```{r setup, include=TRUE, echo=TRUE, message=FALSE, warning=FALSE, tidy=TRUE, results="hide"}
+
+# define parames
+col<- params$col
+
+
+#load librarys
+
+library(openxlsx)
+#library(reshape2)
+#library (RODBC)
+#library(lmtest)
+#library(ggplot2)
+library(foreach)
+library(tidyverse)           
+#library(treemap)
+#library(gridExtra)  
+#library(grid)      
+library(knitr) 
+#library(pander)
+#library(kableExtra) 
+#library(captioner) 
+#library(here)
+#library(RGraphics)
+#library(treemapify)
+
+
+#Creating the Data for the Report
+
+data <- diamonds %>% 
+  filter(color==col)
+
+```
+
+#Creating the Report
+
+The report can be divided into different types of sections:
+
+* all those sections that are within the parent script 
+* sections that are in child-scripts
+  + without a loop and without a condition
+  + with a condition that has to be true to render the file
+  + within a loop, which creates a section for every defined specificaton.
+  
+
+
+#Single child-script
+
+```{r}
+
+# calling a single child with
+
+#```{r single_child,child = 'Single_Child.rmd'}
+#```
+
+```
+
+ 
+
+```{r single_child,child = 'Single_Child.rmd'}
+```
+
+
+#Conditional child-script
+
+The script will only be evaluated if the condition is true. This is a nice way to cope for example with missing data. 
+
+
+
+```{r conditional_print_test, include=TRUE, echo=TRUE, message=FALSE, warning=FALSE, tidy=TRUE}
+
+#creating the test
+
+test <- ifelse(data %>% 
+                   filter(clarity=="SI2") %>% nrow()>0,TRUE,FALSE)
+
+
+```
+
+
+```{r}
+
+#calling the conditional child-script with: 
+
+#```{r conditional_print_script, child='cond_child.Rmd', eval = test}
+#```
+
+```
+
+
+```{r conditional_print_script, child='cond_child.Rmd', eval = test}
+```
+
+#Looping over child-scripts
+
+As the names of chunks may not be repeated, the chunks should be nameless.
+
+```{r LOOP_CHILD, include=TRUE, echo=TRUE, message=FALSE, warning=FALSE, tidy=TRUE, results="hide"}
+ 
+
+  out.loop<-NULL #creating the output
+  
+#Creating a chapter for every cut
+
+foreach(y= c("Premium","Fair")) %do% {  
+  
+  #Parameters used within the loop can be created
+  
+  cut.short <- case_when(y=="Ideal"~"I",
+                         y=="Premium"~"P",
+                         y=="Good"~"G",
+                         y=="Very Good"~"V",
+                         y=="Fair"~"F"
+                         )
+  headline<-  paste0("# Section about the cut ", y)
+  
+  #Creating the chapter for every cut
+  
+  res.loop<-c(headline  
+      ,   knit_child('loop_child_1.Rmd' , envir=knit_global())  
+      ,   knit_child('loop_child_2.RMD' , envir=knit_global())       
+                      )
+  
+  #Puting the chapters together
+  
+  out.loop <- c(out.loop,res.loop)
+  
+  }
+   
+```
+
+\newpage
+
+
+```{r paste_Loop}
+
+#Pasting the chapters into the text with the following inline code
+
+# `r  paste(out.loop, collapse='\n')`
+
+```
+
+`r  paste(out.loop, collapse='\n')`
+
+
+
+
